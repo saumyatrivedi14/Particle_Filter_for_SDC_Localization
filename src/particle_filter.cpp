@@ -26,27 +26,25 @@ using namespace std;
 void ParticleFilter::init(double x, double y, double theta, double std[]) {
 	
 	if(!is_initialized){
-		num_particles = 10; // set number of particles
+		num_particles = 30; // set number of particles
 		
 		// define a random engine
 		default_random_engine gen;
 
 		
-		// creating Gaussian noise for GPS x, y, theta.
-		normal_distribution<double> noise_x(0, std[0]);
-		normal_distribution<double> noise_y(0, std[1]);
-		normal_distribution<double> noise_theta(0, std[2]);
+		// creating Gaussian noise at current GPS measurements x, y, theta.
+		normal_distribution<double> noise_x(x, std[0]);
+		normal_distribution<double> noise_y(y, std[1]);
+		normal_distribution<double> noise_theta(theta, std[2]);
 		
 		for (int i=0; i<num_particles; i++){
-			Particle curr_particle;
-			curr_particle.id = i;							// setting particle id for each i'th particle
-			curr_particle.x = x + noise_x(gen);				// adding noise to x of GPS measurement
-			curr_particle.y = y + noise_y(gen);				// adding noise to y of GPS measurement
-			curr_particle.theta = theta + noise_theta(gen);	// adding noise to theta of GPS measurement
-			curr_particle.weight = 1.0;						// intializing each weight to 1.0
+			particles[i].id = i;						// setting particle id for each i'th particle
+			particles[i].x = noise_x(gen);				// adding noise with mean x of GPS measurement
+			particles[i].y = noise_y(gen);				// adding noise with mean y of GPS measurement
+			particles[i].theta = noise_theta(gen);		// adding noise with mean theta of GPS measurement
+			particles[i].weight = 1.0;					// intializing each weight to 1.0
 			
-			particles.push_back(curr_particle);			// adding each particle to particles vector
-			weights.push_back(curr_particle.weight);	// adding each weight to weights vector
+			weights.push_back(particles[i].weight);		// adding each weight to weights vector
 		}
 		
 		is_initialized = true;
@@ -55,15 +53,8 @@ void ParticleFilter::init(double x, double y, double theta, double std[]) {
 }
 
 void ParticleFilter::prediction(double delta_t, double std_pos[], double velocity, double yaw_rate) {
-	// TODO: Add measurements to each particle and add random Gaussian noise.
-	// NOTE: When adding noise you may find std::normal_distribution and std::default_random_engine useful.
-	//  http://en.cppreference.com/w/cpp/numeric/random/normal_distribution
-	//  http://www.cplusplus.com/reference/random/default_random_engine/
+		
 	
-	// creating Gaussian noise for prediction x, y, theta.
-	normal_distribution<double> noise_x(0, std_pos[0]);
-	normal_distribution<double> noise_y(0, std_pos[1]);
-	normal_distribution<double> noise_theta(0, std_pos[2]);
 
 	// define a random engine
 	default_random_engine gen;
@@ -78,12 +69,18 @@ void ParticleFilter::prediction(double delta_t, double std_pos[], double velocit
 		else{
 			particles[i].x += (velocity/yaw_rate) * (sin(particles[i].theta + yaw_rate * delta_t) - sin(particles[i].theta));
 			particles[i].y += (velocity/yaw_rate) * (cos(particles[i].theta) - cos(particles[i].theta + yaw_rate * delta_t));
-			particles[i].theta += yaw_rate * delta_t + noise_theta(gen);
+			particles[i].theta += yaw_rate * delta_t;
 		}
 		
-		// adding Gaussian noises
-		particles[i].x += noise_x(gen);
-		particles[i].y += noise_y(gen);
+		// adding Gaussian noise with mean as prediction x, y, theta.
+		normal_distribution<double> noise_x(particles[i].x, std_pos[0]);
+		normal_distribution<double> noise_y(particles[i].y, std_pos[1]);
+		normal_distribution<double> noise_theta(particles[i].theta, std_pos[2]);
+		
+		particles[i].x = noise_x(gen);
+		particles[i].y = noise_y(gen);
+		particles[i].theta = noise_theta(gen);
+		
 	}
 	
 
@@ -134,6 +131,8 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
 	vector<double> sense_x;
 	vector<double> sense_y;
 	
+	double sum_weights = 0.0;
+	
 	for (int i=0; i<num_particles; i++){
 		double p_x = particles[i].x;
 		double p_y = particles[i].y;
@@ -144,8 +143,8 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
 			and push them to pred_landmarks vector
 		*/
 		for (unsigned int j=0; j<map_landmarks.landmark_list.size(); j++){
-			double map_x = (double)map_landmarks.landmark_list[j].x_f;
-			double map_y = (double)map_landmarks.landmark_list[j].y_f;
+			double map_x = map_landmarks.landmark_list[j].x_f;
+			double map_y = map_landmarks.landmark_list[j].y_f;
 			int map_id = map_landmarks.landmark_list[j].id_i;
 			
 			// filtering the landmarks in the sensor range 
@@ -181,9 +180,10 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
 		double norm_term = 1.0/(2.0 * M_PI * sig_x * sig_y);
 		
 		//reinit weight
-		weights[i] = 1.0;
+		particles[i].weight = 1.0;
 				
-		for (unsigned int j=0; j<transformed_obs.size(); j++){			
+		for (unsigned int j=0; j<transformed_obs.size(); j++){
+			
 			int Tobs_id = transformed_obs[j].id;
 			
 			for (unsigned int k=0; k<pred_landmarks.size(); k++){
@@ -201,13 +201,12 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
 					sense_y.push_back(Tobs_y);
 					
 					double prob = norm_term * exp(-1.0 * ((pow((Tobs_x - pL_x), 2)/(2.0 * sig_x2)) + (pow((Tobs_y - pL_y), 2)/(2.0 * sig_y2))));
-					weights[i] *= prob;
+					particles[i].weight *= prob;
 				}
 			}
 		}
-		
-		particles[i].weight = weights[i];
-		
+		sum_weights += particles[i].weight;
+				
 		// set associations for current particle
 		SetAssociations(particles[i], associations, sense_x, sense_y);
 		
@@ -216,12 +215,20 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
 		sense_x.clear();
 		sense_y.clear();
 	}
+	
+	// normalizing the weights and adding it to weights vector
+	for (unsigned int i=0; i<particles.size(); i++){
+		weights[i] = particles[i].weight/sum_weights;
+	}
 }
 
 void ParticleFilter::resample() {
 	// define a random engine
 	default_random_engine gen;
 	
+	/**** Method 1 ****/
+	
+	/*
 	// list all particle indices
 	uniform_int_distribution<int> indices(0,num_particles-1);
 	
@@ -246,9 +253,19 @@ void ParticleFilter::resample() {
 			random_index = (random_index + 1) % num_particles;
 			resampled_particles.push_back(particles[random_index]);
 		}
-	}
-	particles = resampled_particles;
+	} 
+	*/
 	
+	/**** Method 2 ****/
+	
+	discrete_distribution<> d(weights.begin(), weights.end());
+
+	for (unsigned int i=0; i < weights.size(); ++i)
+	{
+		resampled_particles[i] = particles[d(gen)];
+	}
+
+	particles = resampled_particles;	
 }
 
 Particle ParticleFilter::SetAssociations(Particle& particle, const std::vector<int>& associations, 
