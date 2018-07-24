@@ -40,7 +40,7 @@ public:
 	
 	// Set of current particles
 	std::vector<Particle> particles;
-
+	
 	// Set of resampled	particles
 	std::vector<Particle> resampled_particles;
 

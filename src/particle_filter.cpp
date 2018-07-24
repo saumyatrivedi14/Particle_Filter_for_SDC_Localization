@@ -3,7 +3,7 @@
  *
  *  Created on: Dec 12, 2016
  *      Author: Tiffany Huang
- *	Modified on: July 22, 2018
+ *	Modified on: July 23, 2018
  *		Author: Saumya Trivedi
  */
 
@@ -36,6 +36,8 @@ void ParticleFilter::init(double x, double y, double theta, double std[]) {
 		normal_distribution<double> noise_x(x, std[0]);
 		normal_distribution<double> noise_y(y, std[1]);
 		normal_distribution<double> noise_theta(theta, std[2]);
+		
+		particles.resize(num_particles);
 		
 		for (int i=0; i<num_particles; i++){
 			particles[i].id = i;						// setting particle id for each i'th particle
@@ -124,16 +126,17 @@ void ParticleFilter::dataAssociation(std::vector<LandmarkObs> predicted, std::ve
 void ParticleFilter::updateWeights(double sensor_range, double std_landmark[], 
 		const std::vector<LandmarkObs> &observations, const Map &map_landmarks) {
 	
-	// Define vectors to be used
-	vector<LandmarkObs> pred_landmarks;
-	vector<LandmarkObs> transformed_obs;
-	vector<int> associations;
-	vector<double> sense_x;
-	vector<double> sense_y;
-	
 	double sum_weights = 0.0;
 	
 	for (int i=0; i<num_particles; i++){
+		// Define vectors to be used
+		vector<LandmarkObs> pred_landmarks;
+		vector<LandmarkObs> transformed_obs;
+		vector<int> associations;
+		vector<double> sense_x;
+		vector<double> sense_y;
+	
+		
 		double p_x = particles[i].x;
 		double p_y = particles[i].y;
 		double p_theta = particles[i].theta;
@@ -223,12 +226,14 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
 }
 
 void ParticleFilter::resample() {
+	
 	// define a random engine
 	default_random_engine gen;
 	
 	/**** Method 1 ****/
-	
-	/*
+	// Set of resampled	particles
+	vector<Particle> resampled_particles;
+		
 	// list all particle indices
 	uniform_int_distribution<int> indices(0,num_particles-1);
 	
@@ -243,7 +248,7 @@ void ParticleFilter::resample() {
 
 	// create a uniform distribution of number between 0 - 2*max_weight
 	uniform_real_distribution<double> random_w(0.0, (2.0*max_w));
-
+	
 	for (unsigned int i=0; i< particles.size(); i++){
 		// select a random value for beta
 		beta += random_w(gen);
@@ -251,19 +256,23 @@ void ParticleFilter::resample() {
 		while (beta > weights[random_index]){
 			beta -= weights[random_index];
 			random_index = (random_index + 1) % num_particles;
-			resampled_particles.push_back(particles[random_index]);
 		}
+		resampled_particles.push_back(particles[random_index]);
 	} 
-	*/
+	
 	
 	/**** Method 2 ****/
+	
+	/* 
+	resampled_particles.resize(particles.size());
 	
 	discrete_distribution<> d(weights.begin(), weights.end());
 
 	for (unsigned int i=0; i < weights.size(); ++i)
 	{
 		resampled_particles[i] = particles[d(gen)];
-	}
+	} 
+	*/
 
 	particles = resampled_particles;	
 }
